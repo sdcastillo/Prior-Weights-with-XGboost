@@ -9,11 +9,17 @@ output:
     highlight: github
 ---
 
-Machine learning models learn by looking at examples.  In supervised learning, there is a known outcome, or label, and by looking at examples of data across many, many examples, a relationship established between the data and the label.  More examples makes it easier for the model to find patterns; fewer examples makes it more difficult to learn, and hence, leads to worse performance.
+Machine learning models learn by looking at examples.  In supervised learning, there is a known outcome, or label, and by looking at data of many, many examples, a relationship is found between the data and the label.  Having more examples makes it easier for the model to find patterns; having fewer examples makes it more difficult to learn, and hence, leads to worse performance.
 
-Often there are only a few examples available for certain groups in the data.  In these cases case, all that the model can do is "guess", or predict an average of the few examples present in the data.
+Often there are only a few examples available for certain groups in the data.  In these cases case, all that the model can do is "guess", or predict an average of the few examples present.  This often leads to poor performance. 
 
-[Prior probabilities](https://en.wikipedia.org/wiki/Prior_probability) help to solve this problem.  Instead of relying on the examples present in the data by themselves, and basing the prediction entirely on the data, we can be clever about setting the initial predictions, or "guesses", based on our own knowledge or intuition.  If there are a lot of examples present in the data, more weight is given to the model's prediction; if there are few examples, more weight is given to the prior probability.
+[Prior probabilities](https://en.wikipedia.org/wiki/Prior_probability), also know as "offsets", help to solve this problem.  Instead of relying on the examples present in the data by themselves, and basing the prediction entirely on the data, we can be clever about setting the initial predictions, or "guesses", based on our own knowledge or intuition.  If there are a lot of examples present in the data, more weight is given to the model's prediction; if there are few examples, more weight is given to the prior probability.  
+
+**Potential Applications:**
+
+- If predicting a person's annual healthcare costs, use their last year's costs as the offset so that people with few records in the current year can use their data from the prior year;
+- In insurance ratemaking premium adjustment, use the manual premium as the offset as described in [this paper](https://pdfs.semanticscholar.org/c93b/36764413698a1f39f27969c5815363497370.pdf);
+- For a kaggle competition, use a competitor's model prediction as the offset to build a model that seeks to improve upon it using a new data source;
 
 ## Example: Prediction if a mushroom is poisonous or edible
 
