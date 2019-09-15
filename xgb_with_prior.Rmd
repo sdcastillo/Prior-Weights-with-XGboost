@@ -1,5 +1,6 @@
 ---
-title: "Bayesian XGBoost: How to Use Prior Probabilities with XGBoost in R"
+title: "Bayesian XGBoost: How to Use Prior Probabilities with XGBoost"
+subtitle: "R Tutorial"
 author: "Sam Castillo"
 date: "`r Sys.Date()`"
 output:
