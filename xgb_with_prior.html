@@ -13,10 +13,19 @@
 
 <meta name="author" content="Sam Castillo" />
 
-<meta name="date" content="2019-08-05" />
+<meta name="date" content="2019-09-15" />
 
-<title>Using Prior Weights with XGboost</title>
+<title>Bayesian XGBoost: How to Use Prior Probabilities with XGBoost in R</title>
 
+<script>$(document).ready(function(){
+    if (typeof $('[data-toggle="tooltip"]').tooltip === 'function') {
+        $('[data-toggle="tooltip"]').tooltip();
+    }
+    if ($('[data-toggle="popover"]').popover === 'function') {
+        $('[data-toggle="popover"]').popover();
+    }
+});
+</script>
 
 
 <style type="text/css">code{white-space: pre;}</style>
@@ -132,238 +141,378 @@ code span.ot { color: #007020; }
 
 
 <section class="page-header">
-<h1 class="title toc-ignore project-name">Using Prior Weights with XGboost</h1>
+<h1 class="title toc-ignore project-name">Bayesian XGBoost: How to Use Prior Probabilities with XGBoost in R</h1>
 <h4 class="author project-author">Sam Castillo</h4>
-<h4 class="date project-date">2019-08-05</h4>
+<h4 class="date project-date">2019-09-15</h4>
 </section>
 
 
 
 <section class="main-content">
+<p>Machine learning models learn by looking at examples. In supervised learning, there is a known outcome, or label, and by looking at examples of data across many, many examples, a relationship established between the data and the label. More examples makes it easier for the model to find patterns; fewer examples makes it more difficult to learn, and hence, leads to worse performance.</p>
+<p>Often there are only a few examples available for certain groups in the data. In these cases case, all that the model can do is “guess”, or predict an average of the few examples present in the data.</p>
+<p><a href="https://en.wikipedia.org/wiki/Prior_probability">Prior probabilities</a> help to solve this problem. Instead of relying on the examples present in the data by themselves, and basing the prediction entirely on the data, we can be clever about setting the initial predictions, or “guesses”, based on our own knowledge or intuition. If there are a lot of examples present in the data, more weight is given to the model’s prediction; if there are few examples, more weight is given to the prior probability.</p>
+<div id="example-prediction-if-a-mushroom-is-poisonous-or-edible" class="section level2">
+<h2>Example: Prediction if a mushroom is poisonous or edible</h2>
+<p>In the <code>agaricus</code> data set, there are examples of different mushrooms described in terms of physical characteristics. Each is either poisonous or edible. There are a <strong>lot</strong> of characteristics.</p>
 <div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb1-1" title="1"><span class="kw">library</span>(xgboost)</a>
-<a class="sourceLine" id="cb1-2" title="2"><span class="kw">library</span>(tidyverse)</a></code></pre></div>
-<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb2-1" title="1"><span class="kw">data</span>(agaricus.train, <span class="dt">package=</span><span class="st">&#39;xgboost&#39;</span>)</a>
-<a class="sourceLine" id="cb2-2" title="2"><span class="kw">data</span>(agaricus.test, <span class="dt">package=</span><span class="st">&#39;xgboost&#39;</span>)</a>
-<a class="sourceLine" id="cb2-3" title="3"></a>
-<a class="sourceLine" id="cb2-4" title="4">dtrain &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(agaricus.train<span class="op">$</span>data, <span class="dt">label =</span> agaricus.train<span class="op">$</span>label)</a>
-<a class="sourceLine" id="cb2-5" title="5">dtest &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(agaricus.test<span class="op">$</span>data, <span class="dt">label =</span> agaricus.test<span class="op">$</span>label)</a>
-<a class="sourceLine" id="cb2-6" title="6">watchlist &lt;-<span class="st"> </span><span class="kw">list</span>(<span class="dt">train =</span> dtrain, <span class="dt">eval =</span> dtest)</a>
-<a class="sourceLine" id="cb2-7" title="7"></a>
-<a class="sourceLine" id="cb2-8" title="8"><span class="co">## A simple xgb.train example:</span></a>
-<a class="sourceLine" id="cb2-9" title="9">param &lt;-<span class="st"> </span><span class="kw">list</span>(<span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="fl">0.05</span>, <span class="dt">verbose =</span> <span class="dv">0</span>, <span class="dt">nthread =</span> <span class="dv">2</span>,</a>
-<a class="sourceLine" id="cb2-10" title="10">              <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>, <span class="dt">eval_metric =</span> <span class="st">&quot;auc&quot;</span>)</a>
-<a class="sourceLine" id="cb2-11" title="11"></a>
-<a class="sourceLine" id="cb2-12" title="12">baseline &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(param, dtrain, <span class="dt">nrounds =</span> <span class="dv">5</span>, watchlist)</a></code></pre></div>
-<pre><code>## [1]  train-auc:0.958228  eval-auc:0.960373 
-## [2]  train-auc:0.958228  eval-auc:0.960373 
-## [3]  train-auc:0.987161  eval-auc:0.987974 
-## [4]  train-auc:0.987161  eval-auc:0.987974 
-## [5]  train-auc:0.987161  eval-auc:0.987974</code></pre>
-<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb4-1" title="1">df &lt;-<span class="st"> </span>agaricus.test<span class="op">$</span>data <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as.matrix</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as_tibble</span>() <span class="op">%&gt;%</span><span class="st"> </span></a>
-<a class="sourceLine" id="cb4-2" title="2"><span class="st">  </span><span class="kw">mutate</span>(</a>
-<a class="sourceLine" id="cb4-3" title="3">    <span class="dt">y_hat =</span> <span class="kw">predict</span>(baseline, agaricus.test<span class="op">$</span>data),</a>
-<a class="sourceLine" id="cb4-4" title="4">    <span class="dt">y =</span> agaricus.test<span class="op">$</span>label)</a>
-<a class="sourceLine" id="cb4-5" title="5"></a>
-<a class="sourceLine" id="cb4-6" title="6">df <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">glimpse</span>()</a></code></pre></div>
-<pre><code>## Observations: 1,611
-## Variables: 128
-## $ `cap-shape=bell`                   &lt;dbl&gt; 1, 0, 1, 0, 0, 0, 0, 1, 0, ...
-## $ `cap-shape=conical`                &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-shape=convex`                 &lt;dbl&gt; 0, 1, 0, 1, 0, 1, 1, 0, 1, ...
-## $ `cap-shape=flat`                   &lt;dbl&gt; 0, 0, 0, 0, 1, 0, 0, 0, 0, ...
-## $ `cap-shape=knobbed`                &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-shape=sunken`                 &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-surface=fibrous`              &lt;dbl&gt; 0, 0, 0, 0, 1, 0, 0, 0, 0, ...
-## $ `cap-surface=grooves`              &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-surface=scaly`                &lt;dbl&gt; 1, 1, 1, 1, 0, 0, 1, 1, 1, ...
-## $ `cap-surface=smooth`               &lt;dbl&gt; 0, 0, 0, 0, 0, 1, 0, 0, 0, ...
-## $ `cap-color=brown`                  &lt;dbl&gt; 0, 0, 0, 0, 1, 0, 1, 0, 0, ...
-## $ `cap-color=buff`                   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-color=cinnamon`               &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-color=gray`                   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-color=green`                  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-color=pink`                   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-color=purple`                 &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-color=red`                    &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `cap-color=white`                  &lt;dbl&gt; 1, 1, 0, 1, 0, 0, 0, 0, 1, ...
-## $ `cap-color=yellow`                 &lt;dbl&gt; 0, 0, 1, 0, 0, 1, 0, 1, 0, ...
-## $ `bruises?=bruises`                 &lt;dbl&gt; 1, 1, 1, 1, 0, 1, 1, 1, 1, ...
-## $ `bruises?=no`                      &lt;dbl&gt; 0, 0, 0, 0, 1, 0, 0, 0, 0, ...
-## $ `odor=almond`                      &lt;dbl&gt; 0, 0, 0, 0, 0, 1, 0, 1, 0, ...
-## $ `odor=anise`                       &lt;dbl&gt; 1, 0, 1, 1, 0, 0, 0, 0, 0, ...
-## $ `odor=creosote`                    &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `odor=fishy`                       &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `odor=foul`                        &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `odor=musty`                       &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `odor=none`                        &lt;dbl&gt; 0, 0, 0, 0, 1, 0, 0, 0, 0, ...
-## $ `odor=pungent`                     &lt;dbl&gt; 0, 1, 0, 0, 0, 0, 1, 0, 1, ...
-## $ `odor=spicy`                       &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-attachment=attached`         &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-attachment=descending`       &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-attachment=free`             &lt;dbl&gt; 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
-## $ `gill-attachment=notched`          &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-spacing=close`               &lt;dbl&gt; 1, 1, 1, 1, 1, 0, 1, 1, 1, ...
-## $ `gill-spacing=crowded`             &lt;dbl&gt; 0, 0, 0, 0, 0, 1, 0, 0, 0, ...
-## $ `gill-spacing=distant`             &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-size=broad`                  &lt;dbl&gt; 1, 0, 1, 1, 0, 0, 0, 1, 0, ...
-## $ `gill-size=narrow`                 &lt;dbl&gt; 0, 1, 0, 0, 1, 1, 1, 0, 1, ...
-## $ `gill-color=black`                 &lt;dbl&gt; 0, 1, 1, 0, 1, 0, 0, 0, 0, ...
-## $ `gill-color=brown`                 &lt;dbl&gt; 1, 0, 0, 0, 0, 1, 0, 1, 0, ...
-## $ `gill-color=buff`                  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-color=chocolate`             &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-color=gray`                  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-color=green`                 &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-color=orange`                &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-color=pink`                  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 1, ...
-## $ `gill-color=purple`                &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-color=red`                   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `gill-color=white`                 &lt;dbl&gt; 0, 0, 0, 1, 0, 0, 1, 0, 0, ...
-## $ `gill-color=yellow`                &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-shape=enlarging`            &lt;dbl&gt; 1, 1, 1, 1, 1, 0, 1, 1, 1, ...
-## $ `stalk-shape=tapering`             &lt;dbl&gt; 0, 0, 0, 0, 0, 1, 0, 0, 0, ...
-## $ `stalk-root=bulbous`               &lt;dbl&gt; 0, 0, 0, 0, 0, 1, 0, 0, 0, ...
-## $ `stalk-root=club`                  &lt;dbl&gt; 1, 0, 1, 1, 0, 0, 0, 1, 0, ...
-## $ `stalk-root=cup`                   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-root=equal`                 &lt;dbl&gt; 0, 1, 0, 0, 1, 0, 1, 0, 1, ...
-## $ `stalk-root=rhizomorphs`           &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-root=rooted`                &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-root=missing`               &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-surface-above-ring=fibrous` &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-surface-above-ring=scaly`   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-surface-above-ring=silky`   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-surface-above-ring=smooth`  &lt;dbl&gt; 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
-## $ `stalk-surface-below-ring=fibrous` &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-surface-below-ring=scaly`   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-surface-below-ring=silky`   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-surface-below-ring=smooth`  &lt;dbl&gt; 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
-## $ `stalk-color-above-ring=brown`     &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-above-ring=buff`      &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-above-ring=cinnamon`  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-above-ring=gray`      &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-above-ring=orange`    &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-above-ring=pink`      &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-above-ring=red`       &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-above-ring=white`     &lt;dbl&gt; 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
-## $ `stalk-color-above-ring=yellow`    &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-below-ring=brown`     &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-below-ring=buff`      &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-below-ring=cinnamon`  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-below-ring=gray`      &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-below-ring=orange`    &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-below-ring=pink`      &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-below-ring=red`       &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `stalk-color-below-ring=white`     &lt;dbl&gt; 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
-## $ `stalk-color-below-ring=yellow`    &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `veil-type=partial`                &lt;dbl&gt; 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
-## $ `veil-type=universal`              &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `veil-color=brown`                 &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `veil-color=orange`                &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `veil-color=white`                 &lt;dbl&gt; 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
-## $ `veil-color=yellow`                &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `ring-number=none`                 &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `ring-number=one`                  &lt;dbl&gt; 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
-## $ `ring-number=two`                  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `ring-type=cobwebby`               &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `ring-type=evanescent`             &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `ring-type=flaring`                &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `ring-type=large`                  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `ring-type=none`                   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `ring-type=pendant`                &lt;dbl&gt; 1, 1, 1, 1, 1, 1, 1, 1, 1, ...
-## $ `ring-type=sheathing`              &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `ring-type=zone`                   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `spore-print-color=black`          &lt;dbl&gt; 0, 0, 0, 0, 1, 0, 0, 0, 0, ...
-## $ `spore-print-color=brown`          &lt;dbl&gt; 1, 1, 1, 1, 0, 1, 1, 1, 1, ...
-## $ `spore-print-color=buff`           &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `spore-print-color=chocolate`      &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `spore-print-color=green`          &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `spore-print-color=orange`         &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `spore-print-color=purple`         &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `spore-print-color=white`          &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `spore-print-color=yellow`         &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `population=abundant`              &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `population=clustered`             &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `population=numerous`              &lt;dbl&gt; 0, 0, 0, 1, 0, 0, 0, 0, 0, ...
-## $ `population=scattered`             &lt;dbl&gt; 1, 0, 1, 0, 0, 0, 1, 1, 0, ...
-## $ `population=several`               &lt;dbl&gt; 0, 1, 0, 0, 0, 1, 0, 0, 1, ...
-## $ `population=solitary`              &lt;dbl&gt; 0, 0, 0, 0, 1, 0, 0, 0, 0, ...
-## $ `habitat=grasses`                  &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 1, 1, ...
-## $ `habitat=leaves`                   &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `habitat=meadows`                  &lt;dbl&gt; 1, 0, 1, 1, 0, 0, 0, 0, 0, ...
-## $ `habitat=paths`                    &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `habitat=urban`                    &lt;dbl&gt; 0, 1, 0, 0, 1, 0, 1, 0, 0, ...
-## $ `habitat=waste`                    &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 0, 0, 0, ...
-## $ `habitat=woods`                    &lt;dbl&gt; 0, 0, 0, 0, 0, 1, 0, 0, 0, ...
-## $ y_hat                              &lt;dbl&gt; 0.4291343, 0.5489307, 0.429...
-## $ y                                  &lt;dbl&gt; 0, 1, 0, 0, 0, 0, 1, 0, 1, ...</code></pre>
-<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb6-1" title="1">df <span class="op">%&gt;%</span><span class="st"> </span></a>
-<a class="sourceLine" id="cb6-2" title="2"><span class="st">  </span><span class="kw">group_by</span>(<span class="st">`</span><span class="dt">odor=almond</span><span class="st">`</span>) <span class="op">%&gt;%</span><span class="st"> </span></a>
-<a class="sourceLine" id="cb6-3" title="3"><span class="st">  </span><span class="kw">summarise</span>(</a>
-<a class="sourceLine" id="cb6-4" title="4">    <span class="dt">avg_pred =</span> <span class="kw">mean</span>(y_hat)</a>
-<a class="sourceLine" id="cb6-5" title="5">  )</a></code></pre></div>
-<pre><code>## # A tibble: 2 x 2
-##   `odor=almond` avg_pred
-##           &lt;dbl&gt;    &lt;dbl&gt;
-## 1             0    0.497
-## 2             1    0.474</code></pre>
-<p>Suppose that we had prior information that we wished to incorporate.</p>
-<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb8-1" title="1"><span class="co">#set the prior weight for all almond-smelling mushrooms to be 50%</span></a>
+<a class="sourceLine" id="cb1-2" title="2"><span class="kw">library</span>(tidyverse)</a>
+<a class="sourceLine" id="cb1-3" title="3"><span class="kw">library</span>(scales)</a>
+<a class="sourceLine" id="cb1-4" title="4"><span class="kw">library</span>(kableExtra)</a>
+<a class="sourceLine" id="cb1-5" title="5"></a>
+<a class="sourceLine" id="cb1-6" title="6"><span class="kw">data</span>(agaricus.train, <span class="dt">package=</span><span class="st">&#39;xgboost&#39;</span>)</a>
+<a class="sourceLine" id="cb1-7" title="7"><span class="kw">data</span>(agaricus.test, <span class="dt">package=</span><span class="st">&#39;xgboost&#39;</span>)</a>
+<a class="sourceLine" id="cb1-8" title="8"></a>
+<a class="sourceLine" id="cb1-9" title="9">t &lt;-<span class="st"> </span><span class="cf">function</span>(df){df <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb1-10" title="10"><span class="st">    </span>knitr<span class="op">::</span><span class="kw">kable</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">kable_styling</span>(<span class="dt">bootstrap_options =</span> <span class="kw">c</span>(<span class="st">&quot;striped&quot;</span>, <span class="st">&quot;hover&quot;</span>, <span class="st">&quot;condensed&quot;</span>))}</a>
+<a class="sourceLine" id="cb1-11" title="11"></a>
+<a class="sourceLine" id="cb1-12" title="12">agaricus.test<span class="op">$</span>data <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as.matrix</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as_tibble</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">names</span>()</a></code></pre></div>
+<pre><code>##   [1] &quot;cap-shape=bell&quot;                   &quot;cap-shape=conical&quot;               
+##   [3] &quot;cap-shape=convex&quot;                 &quot;cap-shape=flat&quot;                  
+##   [5] &quot;cap-shape=knobbed&quot;                &quot;cap-shape=sunken&quot;                
+##   [7] &quot;cap-surface=fibrous&quot;              &quot;cap-surface=grooves&quot;             
+##   [9] &quot;cap-surface=scaly&quot;                &quot;cap-surface=smooth&quot;              
+##  [11] &quot;cap-color=brown&quot;                  &quot;cap-color=buff&quot;                  
+##  [13] &quot;cap-color=cinnamon&quot;               &quot;cap-color=gray&quot;                  
+##  [15] &quot;cap-color=green&quot;                  &quot;cap-color=pink&quot;                  
+##  [17] &quot;cap-color=purple&quot;                 &quot;cap-color=red&quot;                   
+##  [19] &quot;cap-color=white&quot;                  &quot;cap-color=yellow&quot;                
+##  [21] &quot;bruises?=bruises&quot;                 &quot;bruises?=no&quot;                     
+##  [23] &quot;odor=almond&quot;                      &quot;odor=anise&quot;                      
+##  [25] &quot;odor=creosote&quot;                    &quot;odor=fishy&quot;                      
+##  [27] &quot;odor=foul&quot;                        &quot;odor=musty&quot;                      
+##  [29] &quot;odor=none&quot;                        &quot;odor=pungent&quot;                    
+##  [31] &quot;odor=spicy&quot;                       &quot;gill-attachment=attached&quot;        
+##  [33] &quot;gill-attachment=descending&quot;       &quot;gill-attachment=free&quot;            
+##  [35] &quot;gill-attachment=notched&quot;          &quot;gill-spacing=close&quot;              
+##  [37] &quot;gill-spacing=crowded&quot;             &quot;gill-spacing=distant&quot;            
+##  [39] &quot;gill-size=broad&quot;                  &quot;gill-size=narrow&quot;                
+##  [41] &quot;gill-color=black&quot;                 &quot;gill-color=brown&quot;                
+##  [43] &quot;gill-color=buff&quot;                  &quot;gill-color=chocolate&quot;            
+##  [45] &quot;gill-color=gray&quot;                  &quot;gill-color=green&quot;                
+##  [47] &quot;gill-color=orange&quot;                &quot;gill-color=pink&quot;                 
+##  [49] &quot;gill-color=purple&quot;                &quot;gill-color=red&quot;                  
+##  [51] &quot;gill-color=white&quot;                 &quot;gill-color=yellow&quot;               
+##  [53] &quot;stalk-shape=enlarging&quot;            &quot;stalk-shape=tapering&quot;            
+##  [55] &quot;stalk-root=bulbous&quot;               &quot;stalk-root=club&quot;                 
+##  [57] &quot;stalk-root=cup&quot;                   &quot;stalk-root=equal&quot;                
+##  [59] &quot;stalk-root=rhizomorphs&quot;           &quot;stalk-root=rooted&quot;               
+##  [61] &quot;stalk-root=missing&quot;               &quot;stalk-surface-above-ring=fibrous&quot;
+##  [63] &quot;stalk-surface-above-ring=scaly&quot;   &quot;stalk-surface-above-ring=silky&quot;  
+##  [65] &quot;stalk-surface-above-ring=smooth&quot;  &quot;stalk-surface-below-ring=fibrous&quot;
+##  [67] &quot;stalk-surface-below-ring=scaly&quot;   &quot;stalk-surface-below-ring=silky&quot;  
+##  [69] &quot;stalk-surface-below-ring=smooth&quot;  &quot;stalk-color-above-ring=brown&quot;    
+##  [71] &quot;stalk-color-above-ring=buff&quot;      &quot;stalk-color-above-ring=cinnamon&quot; 
+##  [73] &quot;stalk-color-above-ring=gray&quot;      &quot;stalk-color-above-ring=orange&quot;   
+##  [75] &quot;stalk-color-above-ring=pink&quot;      &quot;stalk-color-above-ring=red&quot;      
+##  [77] &quot;stalk-color-above-ring=white&quot;     &quot;stalk-color-above-ring=yellow&quot;   
+##  [79] &quot;stalk-color-below-ring=brown&quot;     &quot;stalk-color-below-ring=buff&quot;     
+##  [81] &quot;stalk-color-below-ring=cinnamon&quot;  &quot;stalk-color-below-ring=gray&quot;     
+##  [83] &quot;stalk-color-below-ring=orange&quot;    &quot;stalk-color-below-ring=pink&quot;     
+##  [85] &quot;stalk-color-below-ring=red&quot;       &quot;stalk-color-below-ring=white&quot;    
+##  [87] &quot;stalk-color-below-ring=yellow&quot;    &quot;veil-type=partial&quot;               
+##  [89] &quot;veil-type=universal&quot;              &quot;veil-color=brown&quot;                
+##  [91] &quot;veil-color=orange&quot;                &quot;veil-color=white&quot;                
+##  [93] &quot;veil-color=yellow&quot;                &quot;ring-number=none&quot;                
+##  [95] &quot;ring-number=one&quot;                  &quot;ring-number=two&quot;                 
+##  [97] &quot;ring-type=cobwebby&quot;               &quot;ring-type=evanescent&quot;            
+##  [99] &quot;ring-type=flaring&quot;                &quot;ring-type=large&quot;                 
+## [101] &quot;ring-type=none&quot;                   &quot;ring-type=pendant&quot;               
+## [103] &quot;ring-type=sheathing&quot;              &quot;ring-type=zone&quot;                  
+## [105] &quot;spore-print-color=black&quot;          &quot;spore-print-color=brown&quot;         
+## [107] &quot;spore-print-color=buff&quot;           &quot;spore-print-color=chocolate&quot;     
+## [109] &quot;spore-print-color=green&quot;          &quot;spore-print-color=orange&quot;        
+## [111] &quot;spore-print-color=purple&quot;         &quot;spore-print-color=white&quot;         
+## [113] &quot;spore-print-color=yellow&quot;         &quot;population=abundant&quot;             
+## [115] &quot;population=clustered&quot;             &quot;population=numerous&quot;             
+## [117] &quot;population=scattered&quot;             &quot;population=several&quot;              
+## [119] &quot;population=solitary&quot;              &quot;habitat=grasses&quot;                 
+## [121] &quot;habitat=leaves&quot;                   &quot;habitat=meadows&quot;                 
+## [123] &quot;habitat=paths&quot;                    &quot;habitat=urban&quot;                   
+## [125] &quot;habitat=waste&quot;                    &quot;habitat=woods&quot;</code></pre>
+<p>Many of the characteristics are uncommon. In data science language, these are “sparse” features.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb3-1" title="1">df =<span class="st"> </span>agaricus.test<span class="op">$</span>data <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as.matrix</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as_tibble</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">summarise_all</span>(mean) <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">gather</span>(feature, percent_one) <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">arrange</span>(<span class="kw">desc</span>(percent_one))</a>
+<a class="sourceLine" id="cb3-2" title="2"></a>
+<a class="sourceLine" id="cb3-3" title="3">df <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">head</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">t</span>()</a></code></pre></div>
+<table class="table table-striped table-hover table-condensed" style="margin-left: auto; margin-right: auto;">
+<thead>
+<tr>
+<th style="text-align:left;">
+feature
+</th>
+<th style="text-align:right;">
+percent_one
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+veil-type=partial
+</td>
+<td style="text-align:right;">
+1.0000000
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+gill-attachment=free
+</td>
+<td style="text-align:right;">
+0.9726878
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+veil-color=white
+</td>
+<td style="text-align:right;">
+0.9720670
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+ring-number=one
+</td>
+<td style="text-align:right;">
+0.9199255
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+gill-spacing=close
+</td>
+<td style="text-align:right;">
+0.8454376
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+gill-size=broad
+</td>
+<td style="text-align:right;">
+0.6703911
+</td>
+</tr>
+</tbody>
+</table>
+<p>Some characteristics are very common, such as <code>veil-type=partial</code> or <code>gill-attachment=free</code>, which are present in 100% and 97% of the example mushrooms respectively.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb4-1" title="1">df <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">tail</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">t</span>()</a></code></pre></div>
+<table class="table table-striped table-hover table-condensed" style="margin-left: auto; margin-right: auto;">
+<thead>
+<tr>
+<th style="text-align:left;">
+feature
+</th>
+<th style="text-align:right;">
+percent_one
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+stalk-root=cup
+</td>
+<td style="text-align:right;">
+0
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+stalk-root=rhizomorphs
+</td>
+<td style="text-align:right;">
+0
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+veil-type=universal
+</td>
+<td style="text-align:right;">
+0
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+ring-type=cobwebby
+</td>
+<td style="text-align:right;">
+0
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+ring-type=sheathing
+</td>
+<td style="text-align:right;">
+0
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+ring-type=zone
+</td>
+<td style="text-align:right;">
+0
+</td>
+</tr>
+</tbody>
+</table>
+<p>Other characteristics are very uncommon. In fact, non appear in the test data set at all!</p>
+<p>But just because they are not in the data set does not mean that we know nothing about them. Suppose that a botanist looks at this and makes a guess: “About 50% of mushrooms with a cup-shaped stalk-root are poisonous, and about 80% of mushrooms with cobwebby ring types are edible.” We could add these as prior weights of 50% and 20% into the model.</p>
+<p>We fit an xgboost model which does not use prior probabilities.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb5-1" title="1">dtrain &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(agaricus.train<span class="op">$</span>data, <span class="dt">label =</span> agaricus.train<span class="op">$</span>label)</a>
+<a class="sourceLine" id="cb5-2" title="2">dtest &lt;-<span class="st"> </span><span class="kw">xgb.DMatrix</span>(agaricus.test<span class="op">$</span>data, <span class="dt">label =</span> agaricus.test<span class="op">$</span>label)</a>
+<a class="sourceLine" id="cb5-3" title="3">watchlist &lt;-<span class="st"> </span><span class="kw">list</span>(<span class="dt">train =</span> dtrain, <span class="dt">eval =</span> dtest)</a>
+<a class="sourceLine" id="cb5-4" title="4"></a>
+<a class="sourceLine" id="cb5-5" title="5"><span class="co">## A simple xgb.train example:</span></a>
+<a class="sourceLine" id="cb5-6" title="6">param &lt;-<span class="st"> </span><span class="kw">list</span>(<span class="dt">max_depth =</span> <span class="dv">2</span>, <span class="dt">eta =</span> <span class="fl">0.05</span>, <span class="dt">verbose =</span> <span class="dv">0</span>, <span class="dt">nthread =</span> <span class="dv">2</span>,</a>
+<a class="sourceLine" id="cb5-7" title="7">              <span class="dt">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>, <span class="dt">eval_metric =</span> <span class="st">&quot;auc&quot;</span>)</a>
+<a class="sourceLine" id="cb5-8" title="8"></a>
+<a class="sourceLine" id="cb5-9" title="9">baseline &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(param, dtrain, <span class="dt">nrounds =</span> <span class="dv">5</span>, watchlist, <span class="dt">verbose =</span> <span class="dv">0</span>)</a></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb6-1" title="1">df &lt;-<span class="st"> </span>agaricus.test<span class="op">$</span>data <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as.matrix</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as_tibble</span>() <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb6-2" title="2"><span class="st">  </span><span class="kw">mutate</span>(</a>
+<a class="sourceLine" id="cb6-3" title="3">    <span class="dt">y_hat =</span> <span class="kw">predict</span>(baseline, agaricus.test<span class="op">$</span>data),</a>
+<a class="sourceLine" id="cb6-4" title="4">    <span class="dt">y =</span> agaricus.test<span class="op">$</span>label)</a>
+<a class="sourceLine" id="cb6-5" title="5"></a>
+<a class="sourceLine" id="cb6-6" title="6">df <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb6-7" title="7"><span class="st">  </span><span class="kw">group_by</span>(<span class="st">`</span><span class="dt">odor=musty</span><span class="st">`</span>) <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb6-8" title="8"><span class="st">  </span><span class="kw">summarise</span>(</a>
+<a class="sourceLine" id="cb6-9" title="9">    <span class="dt">avg_pred =</span> <span class="kw">percent</span>(<span class="kw">mean</span>(y_hat))</a>
+<a class="sourceLine" id="cb6-10" title="10">  ) <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">t</span>()</a></code></pre></div>
+<table class="table table-striped table-hover table-condensed" style="margin-left: auto; margin-right: auto;">
+<thead>
+<tr>
+<th style="text-align:right;">
+odor=musty
+</th>
+<th style="text-align:left;">
+avg_pred
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right;">
+0
+</td>
+<td style="text-align:left;">
+49.6%
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+1
+</td>
+<td style="text-align:left;">
+48.5%
+</td>
+</tr>
+</tbody>
+</table>
+<p>Instead of the previous examples, which do not appear in the test data at all, consider the characteristic <code>odor=musty</code>. Of those mushrooms with a musty odor, the average predicted probabilities are about 49%. In other words, the model is just blindly guessing (making a 50% guess) and not differentiating musty mushrooms from non-musty mushrooms.</p>
+<p>We see that less than 0.5% (32) of the mushrooms in the training data set are actually musty. This means that the model does not have many examples to learn from.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb7-1" title="1">agaricus.train<span class="op">$</span>data <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as.matrix</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as_tibble</span>() <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb7-2" title="2"><span class="st">  </span><span class="kw">summarise</span>(<span class="dt">perent_musty =</span> <span class="kw">percent</span>(<span class="kw">mean</span>(<span class="st">`</span><span class="dt">odor=musty</span><span class="st">`</span>)), <span class="dt">n_musty =</span> <span class="kw">sum</span>(<span class="st">`</span><span class="dt">odor=musty</span><span class="st">`</span>)) <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">t</span>()</a></code></pre></div>
+<table class="table table-striped table-hover table-condensed" style="margin-left: auto; margin-right: auto;">
+<thead>
+<tr>
+<th style="text-align:left;">
+perent_musty
+</th>
+<th style="text-align:right;">
+n_musty
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+0.491%
+</td>
+<td style="text-align:right;">
+32
+</td>
+</tr>
+</tbody>
+</table>
+<p>Suppose that we had prior information that told us that musty mushrooms are edible 90% of the time. We can use a prior probability of 90% edible by setting the <a href="https://xgboost.readthedocs.io/en/latest/python/python_api.html">base margin</a> in xgboost.</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb8-1" title="1"><span class="co">#set the prior weight for all musty-smelling mushrooms to be 50%</span></a>
 <a class="sourceLine" id="cb8-2" title="2">prior_probabilities &lt;-<span class="st"> </span>agaricus.train<span class="op">$</span>data <span class="op">%&gt;%</span><span class="st"> </span></a>
 <a class="sourceLine" id="cb8-3" title="3"><span class="st">  </span><span class="kw">as.matrix</span>() <span class="op">%&gt;%</span><span class="st"> </span></a>
 <a class="sourceLine" id="cb8-4" title="4"><span class="st">  </span><span class="kw">as_tibble</span>() <span class="op">%&gt;%</span><span class="st"> </span></a>
-<a class="sourceLine" id="cb8-5" title="5"><span class="st">  </span><span class="kw">transmute</span>(<span class="dt">prior_wts =</span> <span class="kw">ifelse</span>(<span class="st">`</span><span class="dt">cap-shape=bell</span><span class="st">`</span> <span class="op">==</span><span class="st"> </span><span class="dv">1</span>, </a>
+<a class="sourceLine" id="cb8-5" title="5"><span class="st">  </span><span class="kw">transmute</span>(<span class="dt">prior_wts =</span> <span class="kw">ifelse</span>(<span class="st">`</span><span class="dt">odor=musty</span><span class="st">`</span> <span class="op">==</span><span class="st"> </span><span class="dv">1</span>, </a>
 <a class="sourceLine" id="cb8-6" title="6">                               <span class="dt">yes =</span> <span class="fl">0.1</span>, </a>
 <a class="sourceLine" id="cb8-7" title="7">                               <span class="dt">no =</span> <span class="fl">0.9</span>)) <span class="op">%&gt;%</span><span class="st"> </span></a>
 <a class="sourceLine" id="cb8-8" title="8"><span class="st">  </span><span class="kw">unlist</span>() <span class="op">%&gt;%</span><span class="st"> </span></a>
-<a class="sourceLine" id="cb8-9" title="9"><span class="st">  </span><span class="kw">as.numeric</span>()</a></code></pre></div>
-<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb9-1" title="1"><span class="kw">setinfo</span>(dtrain, <span class="st">&quot;base_margin&quot;</span>, <span class="kw">log</span>(prior_probabilities))</a></code></pre></div>
+<a class="sourceLine" id="cb8-9" title="9"><span class="st">  </span><span class="kw">as.numeric</span>()</a>
+<a class="sourceLine" id="cb8-10" title="10"></a>
+<a class="sourceLine" id="cb8-11" title="11"><span class="kw">setinfo</span>(dtrain, <span class="st">&quot;base_margin&quot;</span>, <span class="kw">log</span>(prior_probabilities))</a></code></pre></div>
 <pre><code>## [1] TRUE</code></pre>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb11-1" title="1">prior_weighted &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(param, dtrain, <span class="dt">nrounds =</span> <span class="dv">30</span>, watchlist)</a></code></pre></div>
-<pre><code>## [1]  train-auc:0.953699  eval-auc:0.945252 
-## [2]  train-auc:0.984204  eval-auc:0.993159 
-## [3]  train-auc:0.984204  eval-auc:0.993159 
-## [4]  train-auc:0.984204  eval-auc:0.993159 
-## [5]  train-auc:0.984204  eval-auc:0.993159 
-## [6]  train-auc:0.984204  eval-auc:0.993159 
-## [7]  train-auc:0.984204  eval-auc:0.993159 
-## [8]  train-auc:0.984204  eval-auc:0.993159 
-## [9]  train-auc:0.984204  eval-auc:0.993159 
-## [10] train-auc:0.990845  eval-auc:0.993159 
-## [11] train-auc:0.990845  eval-auc:0.993159 
-## [12] train-auc:0.993588  eval-auc:0.997889 
-## [13] train-auc:0.993588  eval-auc:0.997892 
-## [14] train-auc:0.993588  eval-auc:0.997892 
-## [15] train-auc:0.993588  eval-auc:0.997892 
-## [16] train-auc:0.993588  eval-auc:0.997892 
-## [17] train-auc:0.993588  eval-auc:0.997892 
-## [18] train-auc:0.993588  eval-auc:0.997892 
-## [19] train-auc:0.993588  eval-auc:0.997892 
-## [20] train-auc:0.993769  eval-auc:0.998123 
-## [21] train-auc:0.994254  eval-auc:0.997995 
-## [22] train-auc:0.993769  eval-auc:0.998123 
-## [23] train-auc:0.994883  eval-auc:0.998123 
-## [24] train-auc:0.994883  eval-auc:0.998123 
-## [25] train-auc:0.994883  eval-auc:0.998123 
-## [26] train-auc:0.994883  eval-auc:0.998123 
-## [27] train-auc:0.994883  eval-auc:0.998123 
-## [28] train-auc:0.994883  eval-auc:0.998123 
-## [29] train-auc:0.997088  eval-auc:0.998123 
-## [30] train-auc:0.998560  eval-auc:0.999728</code></pre>
-<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb13-1" title="1">agaricus.test<span class="op">$</span>data <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as.matrix</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as_tibble</span>() <span class="op">%&gt;%</span><span class="st"> </span></a>
-<a class="sourceLine" id="cb13-2" title="2"><span class="st">  </span><span class="kw">mutate</span>(</a>
-<a class="sourceLine" id="cb13-3" title="3">    <span class="dt">y_hat_baseline =</span> <span class="kw">predict</span>(baseline, agaricus.test<span class="op">$</span>data),</a>
-<a class="sourceLine" id="cb13-4" title="4">    <span class="dt">y_hat_prior_wtd =</span> <span class="kw">predict</span>(prior_weighted, agaricus.test<span class="op">$</span>data),</a>
-<a class="sourceLine" id="cb13-5" title="5">    <span class="dt">y =</span> agaricus.test<span class="op">$</span>label) <span class="op">%&gt;%</span><span class="st"> </span></a>
-<a class="sourceLine" id="cb13-6" title="6"><span class="st">   </span><span class="kw">group_by</span>(<span class="st">`</span><span class="dt">cap-shape=bell</span><span class="st">`</span>) <span class="op">%&gt;%</span><span class="st"> </span></a>
-<a class="sourceLine" id="cb13-7" title="7"><span class="st">  </span><span class="kw">summarise</span>(</a>
-<a class="sourceLine" id="cb13-8" title="8">    <span class="dt">avg_baseline =</span> <span class="kw">mean</span>(y_hat_baseline),</a>
-<a class="sourceLine" id="cb13-9" title="9">    <span class="dt">avg_wtd =</span> <span class="kw">mean</span>(y_hat_prior_wtd),</a>
-<a class="sourceLine" id="cb13-10" title="10">    <span class="dt">avg_y =</span> <span class="kw">mean</span>(y)</a>
-<a class="sourceLine" id="cb13-11" title="11">  ) </a></code></pre></div>
-<pre><code>## # A tibble: 2 x 4
-##   `cap-shape=bell` avg_baseline avg_wtd avg_y
-##              &lt;dbl&gt;        &lt;dbl&gt;   &lt;dbl&gt; &lt;dbl&gt;
-## 1                0        0.499   0.510 0.501
-## 2                1        0.434   0.393 0.120</code></pre>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb10-1" title="1">prior_weighted &lt;-<span class="st"> </span><span class="kw">xgb.train</span>(param, dtrain, <span class="dt">nrounds =</span> <span class="dv">30</span>, watchlist, <span class="dt">verbose =</span> <span class="dv">0</span>)</a></code></pre></div>
+<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><a class="sourceLine" id="cb11-1" title="1">agaricus.test<span class="op">$</span>data <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as.matrix</span>() <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">as_tibble</span>() <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb11-2" title="2"><span class="st">  </span><span class="kw">mutate</span>(</a>
+<a class="sourceLine" id="cb11-3" title="3">    <span class="dt">y_hat_baseline =</span> <span class="kw">predict</span>(baseline, agaricus.test<span class="op">$</span>data),</a>
+<a class="sourceLine" id="cb11-4" title="4">    <span class="dt">y_hat_prior_wtd =</span> <span class="kw">predict</span>(prior_weighted, agaricus.test<span class="op">$</span>data),</a>
+<a class="sourceLine" id="cb11-5" title="5">    <span class="dt">y =</span> agaricus.test<span class="op">$</span>label) <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb11-6" title="6"><span class="st">   </span><span class="kw">group_by</span>(<span class="st">`</span><span class="dt">odor=musty</span><span class="st">`</span>) <span class="op">%&gt;%</span><span class="st"> </span></a>
+<a class="sourceLine" id="cb11-7" title="7"><span class="st">  </span><span class="kw">summarise</span>(</a>
+<a class="sourceLine" id="cb11-8" title="8">    <span class="dt">baseline_xgboost =</span> <span class="kw">percent</span>(<span class="kw">mean</span>(y_hat_baseline)),</a>
+<a class="sourceLine" id="cb11-9" title="9">    <span class="dt">prior_xgboost =</span> <span class="kw">percent</span>(<span class="kw">mean</span>(y_hat_prior_wtd)),</a>
+<a class="sourceLine" id="cb11-10" title="10">    <span class="dt">percent_poisonous =</span> <span class="kw">percent</span>(<span class="kw">mean</span>(y))</a>
+<a class="sourceLine" id="cb11-11" title="11">  ) <span class="op">%&gt;%</span><span class="st"> </span><span class="kw">t</span>()</a></code></pre></div>
+<table class="table table-striped table-hover table-condensed" style="margin-left: auto; margin-right: auto;">
+<thead>
+<tr>
+<th style="text-align:right;">
+odor=musty
+</th>
+<th style="text-align:left;">
+baseline_xgboost
+</th>
+<th style="text-align:left;">
+prior_xgboost
+</th>
+<th style="text-align:left;">
+percent_poisonous
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:right;">
+0
+</td>
+<td style="text-align:left;">
+49.6%
+</td>
+<td style="text-align:left;">
+49.4%
+</td>
+<td style="text-align:left;">
+48.0%
+</td>
+</tr>
+<tr>
+<td style="text-align:right;">
+1
+</td>
+<td style="text-align:left;">
+48.5%
+</td>
+<td style="text-align:left;">
+74.4%
+</td>
+<td style="text-align:left;">
+100%
+</td>
+</tr>
+</tbody>
+</table>
+<p>After adding the prior weights, the musty mushrooms are much more likely to be predicted as poisonous as the average predicted probability increases to 74.4% from 48.5%. This is closer to reality, as 100% of the musty mushrooms in the test set are actually poisonous.</p>
+</div>
 </section>
 
 
