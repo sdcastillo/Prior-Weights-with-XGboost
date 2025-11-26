@@ -127,12 +127,6 @@ To help me understand and fix issues quickly, please include:
 
 **Security updates are provided for:**
 
-| Project | Latest Version | Status |
-|---------|---|---|
-| [sdcastillo.github.io](https://github.com/sdcastillo/sdcastillo.github.io) | Current | ✅ Active |
-| [SamSoundsVibes](https://github.com/sdcastillo/SamSoundsVibes) | Current | ✅ Active |
-| [SamSoundsVibes (PassMyExam Legacy)](https://github.com/sdcastillo/PassMyExam) | Varies | ⚠️ Limited Support |
-
 For details on support status for specific projects, please check each repository's README.
 
 ---
